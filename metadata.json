@@ -1,0 +1,7 @@
+{
+  "name": "SmartCard AI",
+  "description": "AI-powered business card scanner and manager using Gemini API. Scan, organize, and export to Contacts or Google Sheets.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
