@@ -20,6 +20,9 @@ const resizeImage = (base64Str: string, maxWidth = 400): Promise<string> => {
       const resizedBase64 = canvas.toDataURL('image/jpeg', 0.6).split(',')[1]; // Lower quality for better storage
       resolve(resizedBase64);
     };
+    img.onerror = () => {
+      resolve(""); // Return empty if resize fails
+    };
   });
 };
 
@@ -51,10 +54,14 @@ function App() {
     const savedCards = localStorage.getItem('smartcards');
     const savedSettings = localStorage.getItem('smartcard_settings');
     if (savedCards) {
-      setCards(JSON.parse(savedCards));
+      try {
+        setCards(JSON.parse(savedCards));
+      } catch(e) { console.error("Failed to load cards", e); }
     }
     if (savedSettings) {
-      setSettings(JSON.parse(savedSettings));
+      try {
+        setSettings(JSON.parse(savedSettings));
+      } catch(e) { console.error("Failed to load settings", e); }
     }
   }, []);
 
@@ -156,7 +163,7 @@ function App() {
       alert("설정에서 Web App URL을 먼저 입력해주세요.");
       return;
     }
-    if (!confirm("구글 시트 데이터를 불러와 현재 데이터를 덮어씁니다.\n진행하시겠습니까?")) return;
+    if (!confirm("구글 시트 데이터를 불러와 현재 데이터를 덮어씁니다.\n(기존 데이터는 삭제됩니다) 진행하시겠습니까?")) return;
 
     setIsLoading(true);
     try {
@@ -164,23 +171,23 @@ function App() {
       
       // Data Sanitization and Transformation
       const sanitizedCards: BusinessCard[] = rawCards.map((c: any) => {
-         // Fix Invalid Date Issue
+         // Fix Invalid Date Issue: Ensure date is parsable or default to now
          let dateStr = c.scannedAt;
-         if (!dateStr || isNaN(Date.parse(dateStr))) {
+         if (!dateStr || dateStr === 'undefined' || isNaN(Date.parse(dateStr))) {
             dateStr = new Date().toISOString();
          }
 
          return {
            id: c.id || uuidv4(),
-           name: c.name || '이름 없음',
-           jobTitle: c.jobTitle || '',
-           company: c.company || '',
-           phone: c.phone || '',
-           email: c.email || '',
-           address: c.address || '',
-           website: c.website || '',
+           name: String(c.name || '이름 없음'),
+           jobTitle: String(c.jobTitle || ''),
+           company: String(c.company || ''),
+           phone: String(c.phone || ''),
+           email: String(c.email || ''),
+           address: String(c.address || ''),
+           website: String(c.website || ''),
            scannedAt: dateStr,
-           notes: c.notes || '',
+           notes: String(c.notes || ''),
            imageUrl: c.imageUrl || undefined // Image might be empty on sheet
          };
       });
@@ -194,7 +201,7 @@ function App() {
         });
         setShowRestoreModal(true);
       } else {
-        alert("성공적으로 연결되었으나 시트에 데이터가 없습니다.");
+        alert("연결은 성공했으나, 시트에 명함 데이터가 없습니다.");
       }
     } catch (e: any) {
       console.error(e);
@@ -221,10 +228,12 @@ function App() {
 
   // Group cards by date
   const getGroupedCards = () => {
-    const filtered = cards.filter(c => 
-      c.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
-      c.company.toLowerCase().includes(searchQuery.toLowerCase())
-    );
+    const query = searchQuery ? searchQuery.toLowerCase() : '';
+    const filtered = cards.filter(c => {
+      const name = c.name ? c.name.toLowerCase() : '';
+      const company = c.company ? c.company.toLowerCase() : '';
+      return name.includes(query) || company.includes(query);
+    });
 
     const groups: { [key: string]: BusinessCard[] } = {
       '오늘': [],
@@ -234,14 +243,16 @@ function App() {
     };
 
     const now = new Date();
+    // Reset time part to ensure clean comparison
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
     const yesterday = today - 86400000;
     const weekAgo = today - 86400000 * 7;
 
     filtered.forEach(card => {
-      // Validate date
+      // Robust Date Parsing
       const timestamp = Date.parse(card.scannedAt);
-      const cardDate = isNaN(timestamp) ? 0 : timestamp; // Fallback to 0 (oldest) if invalid
+      // If timestamp is NaN, default to 0 (oldest)
+      const cardDate = isNaN(timestamp) ? 0 : timestamp;
 
       if (cardDate >= today) groups['오늘'].push(card);
       else if (cardDate >= yesterday) groups['어제'].push(card);
@@ -258,7 +269,7 @@ function App() {
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 animate-in fade-in duration-200">
         <div className="bg-white rounded-xl shadow-2xl max-w-sm w-full overflow-hidden">
           <div className="bg-[#00c7ae] p-4 text-white text-center">
-            <h3 className="font-bold text-lg">복원 완료 리포트</h3>
+            <h3 className="font-bold text-lg">복원 완료</h3>
           </div>
           <div className="p-6">
             <div className="text-center mb-6">
@@ -267,12 +278,12 @@ function App() {
             </div>
             
             <div className="bg-gray-50 rounded-lg p-3 text-xs border border-gray-100 mb-6">
-              <p className="font-bold text-gray-600 mb-2 border-b border-gray-200 pb-1">첫 번째 데이터 샘플</p>
+              <p className="font-bold text-gray-600 mb-2 border-b border-gray-200 pb-1">첫 번째 데이터 확인</p>
               {restoreReport.sample ? (
-                <div className="space-y-1 text-gray-600">
-                  <p><span className="text-gray-400">이름:</span> {restoreReport.sample.name}</p>
-                  <p><span className="text-gray-400">회사:</span> {restoreReport.sample.company}</p>
-                  <p><span className="text-gray-400">날짜:</span> {new Date(restoreReport.sample.scannedAt).toLocaleDateString()}</p>
+                <div className="space-y-1 text-gray-600 text-left">
+                  <p className="truncate"><span className="text-gray-400 inline-block w-8">이름:</span> {restoreReport.sample.name}</p>
+                  <p className="truncate"><span className="text-gray-400 inline-block w-8">회사:</span> {restoreReport.sample.company}</p>
+                  <p className="truncate"><span className="text-gray-400 inline-block w-8">날짜:</span> {new Date(restoreReport.sample.scannedAt).toLocaleDateString()}</p>
                 </div>
               ) : (
                 <p className="text-gray-400 italic">샘플 데이터 없음</p>
@@ -281,9 +292,9 @@ function App() {
 
             <button 
               onClick={() => { setShowRestoreModal(false); setView(ViewState.LIST); }}
-              className="w-full bg-[#333] text-white font-bold py-3 rounded-lg hover:bg-black transition-colors"
+              className="w-full bg-[#3a3a3a] text-white font-bold py-3 rounded-lg hover:bg-black transition-colors"
             >
-              확인 (목록 보기)
+              확인 (목록으로 이동)
             </button>
           </div>
         </div>
@@ -342,7 +353,7 @@ function App() {
               if (groupCards.length === 0) return null;
               return (
                 <div key={label}>
-                  <div className="px-4 py-2 text-xs text-gray-500 bg-[#f0f0f0] font-medium">{label}</div>
+                  <div className="px-4 py-2 text-xs text-gray-500 bg-[#f0f0f0] font-medium">{label} ({groupCards.length})</div>
                   <ul className="bg-white border-t border-b border-gray-200 divide-y divide-gray-100">
                     {groupCards.map(card => (
                       <li key={card.id} 

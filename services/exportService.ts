@@ -232,7 +232,8 @@ export const testSheetConnection = async (webhookUrl: string): Promise<{ success
         return { success: false, message: `스크립트 오류: ${data.error}` };
       }
       if (Array.isArray(data)) {
-        return { success: true, message: `연동 성공! 시트에 저장된 명함: ${data.length}개` };
+        // SUCCESS MESSAGE UPDATED HERE
+        return { success: true, message: `연동 성공! 명함 ${data.length}건 발견. 아래 '데이터 복원' 버튼을 눌러 가져오세요.` };
       }
       return { success: false, message: "응답 형식이 올바르지 않습니다 (배열이 아님)." };
     } catch (e) {
