@@ -1,63 +1,45 @@
-import { GoogleGenerativeAI } from "@google/generative-ai";
-export const extractCardData = async (base64Image: string): Promise<any> => {
-  const apiKey = process.env.API_KEY;
-  if (!apiKey) {
-    throw new Error("API Key is missing.");
+import { GoogleGenerativeAI, SchemaType } from "@google/generative-ai";
+
+// 환경 변수에서 API 키를 가져옵니다.
+const API_KEY = process.env.API_KEY || "";
+
+// GoogleGenerativeAI 인스턴스 생성
+const genAI = new GoogleGenerativeAI(API_KEY);
+
+/**
+ * AI 응답을 위한 스키마 정의 (JSON 출력을 강제하기 위함)
+ */
+const responseSchema = {
+  description: "Workshop output schema",
+  type: SchemaType.OBJECT,
+  properties: {
+    title: { type: SchemaType.STRING },
+    content: { type: SchemaType.STRING },
+    steps: {
+      type: SchemaType.ARRAY,
+      items: { type: SchemaType.STRING }
+    }
   }
+};
 
-  const ai = new GoogleGenAI({ apiKey });
-
-  const systemInstruction = `
-    You are an expert OCR assistant specialized in parsing business cards, especially Korean and International formats.
-    Extract the information accurately.
-    - If a field is missing, use an empty string.
-    - Format phone numbers cleanly (e.g., 010-1234-5678).
-    - If there are multiple phone numbers, prefer the mobile number.
-    - Ensure 'name' captures the full name.
-  `;
-
+/**
+ * Gemini 모델을 사용하여 분석을 수행하는 함수
+ */
+export const analyzeWithGemini = async (prompt: string) => {
   try {
-    const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash",
-      contents: {
-        parts: [
-          {
-            inlineData: {
-              mimeType: "image/jpeg",
-              data: base64Image,
-            },
-          },
-          {
-            text: "Extract data from this business card.",
-          },
-        ],
-      },
-      config: {
-        systemInstruction: systemInstruction,
+    // 모델 설정 (gemini-1.5-flash 또는 pro)
+    const model = genAI.getGenerativeModel({ 
+      model: "gemini-1.5-flash",
+      generationConfig: {
         responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            name: { type: Type.STRING },
-            jobTitle: { type: Type.STRING },
-            company: { type: Type.STRING },
-            phone: { type: Type.STRING },
-            email: { type: Type.STRING },
-            address: { type: Type.STRING },
-            website: { type: Type.STRING },
-          },
-          required: ["name", "phone", "company"],
-        },
-      },
+      }
     });
 
-    if (response.text) {
-      return JSON.parse(response.text);
-    } else {
-      throw new Error("No data extracted");
-    }
+    const result = await model.generateContent(prompt);
+    const response = await result.response;
+    return JSON.parse(response.text());
   } catch (error) {
-    console.error("Gemini OCR Error:", error);
+    console.error("Gemini API Error:", error);
     throw error;
   }
 };
