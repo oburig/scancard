@@ -16,8 +16,8 @@
     "react-is": "^19.0.0",
     "react-markdown": "^10.1.0",
     "react-router-dom": "^7.1.0",
-    "recharts": "2.13.0",
-   },
+    "recharts": "2.13.0"
+  },
   "devDependencies": {
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
