@@ -1,5 +1,4 @@
-import { GoogleGenAI, Type } from "@google/genai";
-
+import { GoogleGenerativeAI } from "@google/generative-ai";
 export const extractCardData = async (base64Image: string): Promise<any> => {
   const apiKey = process.env.API_KEY;
   if (!apiKey) {
