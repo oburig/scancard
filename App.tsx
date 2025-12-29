@@ -642,7 +642,7 @@ function App() {
                )}
                
                <p className="text-[11px] text-gray-400 mt-1">
-                 아래 Apps Script 코드를 시트의 '확장 프로그램 > Apps Script'에 붙여넣고 배포하세요.
+                  아래 Apps Script 코드를 시트의 '확장 프로그램 {">"} Apps Script'에 붙여넣고 배포하세요.
                </p>
              </div>
 
