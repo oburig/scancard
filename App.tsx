@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { v4 as uuidv4 } from 'uuid';
 import { extractCardData } from './services/geminiService';
 import { BusinessCard, ViewState, AppSettings } from './types';
 import { downloadVCard, shareCard, sendSMS, fileToBase64, sendToGoogleSheet, downloadCSV, backupToSheet, restoreFromSheet, testSheetConnection } from './services/exportService';
@@ -92,7 +91,7 @@ function App() {
         const data = await extractCardData(fullBase64);
         setTempData({
           ...data,
-          id: uuidv4(),
+          id: crypto.randomUUID(),
           scannedAt: new Date().toISOString(),
           imageUrl: thumbBase64
         });
@@ -178,7 +177,7 @@ function App() {
          }
 
          return {
-           id: c.id || uuidv4(),
+           id: c.id || crypto.randomUUID(),
            name: String(c.name || '이름 없음'),
            jobTitle: String(c.jobTitle || ''),
            company: String(c.company || ''),
