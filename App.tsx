@@ -5,10 +5,9 @@ import { BusinessCard, ViewState, AppSettings } from './types';
 import { downloadVCard, shareCard, sendSMS, fileToBase64, sendToGoogleSheet, downloadCSV, backupToSheet, restoreFromSheet, testSheetConnection } from './services/exportService';
 import { CameraIcon, PlusIcon, PhoneIcon, ShareIcon, SettingsIcon, ChevronLeftIcon, SheetIcon, ChatIcon, LinkIcon, SearchIcon, BellIcon, UserGroupIcon, MenuIcon } from './components/Icons';
 
-// User's provided Google Apps Script Web App URL
 const TARGET_WEBAPP_URL = "https://script.google.com/macros/s/AKfycbyX9Ar8el5BpWNDjqaKQQjFiRq1kGJB3dpJ0uZIrXL1gJXrwukQXodUXdiCCBl8pGXw/exec";
 
-const resizeImage = (base64Str: string, maxWidth = 400): Promise<string> => {
+const resizeImage = (base64Str: string, maxWidth = 800): Promise<string> => {
   return new Promise((resolve) => {
     const img = new Image();
     img.src = `data:image/jpeg;base64,${base64Str}`;
@@ -18,8 +17,13 @@ const resizeImage = (base64Str: string, maxWidth = 400): Promise<string> => {
       canvas.width = maxWidth;
       canvas.height = img.height * scaleSize;
       const ctx = canvas.getContext('2d');
-      ctx?.drawImage(img, 0, 0, canvas.width, canvas.height);
-      const resizedBase64 = canvas.toDataURL('image/jpeg', 0.6).split(',')[1];
+      if (ctx) {
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = 'high';
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      }
+      // Use higher quality for OCR accuracy (0.85)
+      const resizedBase64 = canvas.toDataURL('image/jpeg', 0.85).split(',')[1];
       resolve(resizedBase64);
     };
     img.onerror = () => resolve("");
@@ -31,20 +35,13 @@ function App() {
   const [view, setView] = useState<ViewState>(ViewState.LIST);
   const [selectedCard, setSelectedCard] = useState<BusinessCard | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [tempData, setTempData] = useState<Partial<BusinessCard> | null>(null);
-  const [settings, setSettings] = useState<AppSettings>({ googleSheetWebhookUrl: TARGET_WEBAPP_URL });
   const [searchQuery, setSearchQuery] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   
   const fileInputRef = useRef<HTMLInputElement>(null);
   const isInitialMount = useRef(true);
 
-  /**
-   * Robust field mapping tailored to user's sheet:
-   * Col B: Name, Col C: Title, Col D: Company, Col E: Phone, 
-   * Col F: Email, Col G: Address, Col H: Website, Col I: Date
-   */
   const mapFields = (item: any): BusinessCard => {
     const findValue = (possibleKeys: string[]) => {
       const keysInItem = Object.keys(item);
@@ -64,25 +61,15 @@ function App() {
     };
 
     return {
-      // Use Column A or UUID if not provided
       id: findValue(['id', 'uuid', 'A']) || uuidv4(),
-      // B: Name
       name: findValue(['name', 'Name', 'B', '이름']) || '이름 없음',
-      // C: Title
       jobTitle: findValue(['jobTitle', 'Title', 'C', '직책']),
-      // D: Company
       company: findValue(['company', 'Company', 'D', '회사']),
-      // E: Phone
       phone: findValue(['phone', 'Phone', 'E', '전화']),
-      // F: Email
       email: findValue(['email', 'Email', 'F', '이메일']),
-      // G: Address
       address: findValue(['address', 'Address', 'G', '주소']),
-      // H: Website
       website: findValue(['website', 'Website', 'H', '웹사이트']),
-      // I: Date
       scannedAt: parseDate(findValue(['date', 'Date', 'scannedAt', 'I', '등록일'])),
-      // J+: Notes
       notes: findValue(['notes', 'Notes', '메모', 'J']),
       imageUrl: item.imageUrl || item.Image || undefined
     };
@@ -91,13 +78,11 @@ function App() {
   const autoSync = async () => {
     setIsLoading(true);
     try {
-      console.log("Starting Auto-Sync with URL:", TARGET_WEBAPP_URL);
       const rawData = await restoreFromSheet(TARGET_WEBAPP_URL);
       if (Array.isArray(rawData)) {
         const sanitized = rawData.map(mapFields);
         setCards(sanitized);
         localStorage.setItem('smartcards', JSON.stringify(sanitized));
-        console.log(`Auto-Sync Success: ${sanitized.length} cards loaded.`);
       }
     } catch (e) {
       console.error("Auto-Sync failed:", e);
@@ -113,7 +98,6 @@ function App() {
         setCards(JSON.parse(savedCards));
       } catch(e) { console.error(e); }
     }
-    // Always sync on startup
     autoSync();
   }, []);
 
@@ -131,17 +115,21 @@ function App() {
       setIsProcessing(true);
       try {
         const fullBase64 = await fileToBase64(file);
-        const thumbBase64 = await resizeImage(fullBase64);
-        const data = await extractCardData(fullBase64);
+        // Use a slightly larger resize for better OCR detail
+        const ocrImageBase64 = await resizeImage(fullBase64, 1024);
+        const displayImageBase64 = await resizeImage(fullBase64, 400);
+        
+        const extractedData = await extractCardData(ocrImageBase64);
+        
         setTempData({
-          ...data,
+          ...extractedData,
           id: uuidv4(),
           scannedAt: new Date().toISOString(),
-          imageUrl: thumbBase64
+          imageUrl: displayImageBase64 // Store smaller version for UI
         });
         setView(ViewState.EDIT);
       } catch (err) {
-        alert("명함을 인식하지 못했습니다. 조명을 확인하고 다시 찍어주세요.");
+        alert("명함 정보를 읽는 데 실패했습니다. 다시 시도해 주세요.");
       } finally {
         setIsProcessing(false);
         if (fileInputRef.current) fileInputRef.current.value = '';
@@ -256,11 +244,13 @@ function App() {
 
   const renderEdit = () => {
     const data = (selectedCard || tempData) as BusinessCard;
+    if (!data) return null;
+
     return (
       <div className="min-h-screen bg-white flex flex-col">
         <header className="h-14 bg-[#2d2d2d] text-white px-4 flex justify-between items-center sticky top-0 z-30">
           <button onClick={() => { setView(ViewState.LIST); setSelectedCard(null); setTempData(null); }} className="flex items-center gap-1"><ChevronLeftIcon className="w-5 h-5" /> 목록</button>
-          <div className="font-bold">명함 정보</div>
+          <div className="font-bold">명함 정보 확인</div>
           <button onClick={saveCard} className="text-[#00c7ae] font-bold">저장</button>
         </header>
         <div className="flex-1 overflow-y-auto p-5 space-y-6">

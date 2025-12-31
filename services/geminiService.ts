@@ -1,4 +1,3 @@
-
 import { GoogleGenAI, Type } from "@google/genai";
 
 export const extractCardData = async (base64Image: string): Promise<any> => {
@@ -10,12 +9,20 @@ export const extractCardData = async (base64Image: string): Promise<any> => {
   const ai = new GoogleGenAI({ apiKey });
 
   const systemInstruction = `
-    You are an expert OCR assistant specialized in parsing business cards, especially Korean and International formats.
-    Extract the information accurately.
-    - If a field is missing, use an empty string.
-    - Format phone numbers cleanly (e.g., 010-1234-5678).
-    - If there are multiple phone numbers, prefer the mobile number.
-    - Ensure 'name' captures the full name.
+    You are a professional Business Card OCR Expert. 
+    Analyze the provided image and extract information into a clean JSON format.
+    
+    Guidelines:
+    1. Language: Support both Korean and English.
+    2. Name: Identify the person's name (not the company name).
+    3. JobTitle: Extract the position (e.g., 대표이사, 팀장, Manager).
+    4. Company: Extract the full company name.
+    5. Phone: Standardize numbers to '010-XXXX-XXXX' format. If there are multiple numbers, prioritize the mobile phone.
+    6. Email: Ensure it's a valid email address found on the card.
+    7. Website: Extract URLs (e.g., www.company.com).
+    8. Address: Extract the full physical address.
+    
+    Return ONLY the JSON object. If a piece of information is not present, use an empty string "".
   `;
 
   try {
@@ -30,7 +37,7 @@ export const extractCardData = async (base64Image: string): Promise<any> => {
             },
           },
           {
-            text: "Extract data from this business card.",
+            text: "Please read this business card and extract all contact details into JSON.",
           },
         ],
       },
@@ -40,13 +47,14 @@ export const extractCardData = async (base64Image: string): Promise<any> => {
         responseSchema: {
           type: Type.OBJECT,
           properties: {
-            name: { type: Type.STRING },
-            jobTitle: { type: Type.STRING },
-            company: { type: Type.STRING },
-            phone: { type: Type.STRING },
-            email: { type: Type.STRING },
-            address: { type: Type.STRING },
-            website: { type: Type.STRING },
+            name: { type: Type.STRING, description: "Full name of the person" },
+            jobTitle: { type: Type.STRING, description: "Professional title or position" },
+            company: { type: Type.STRING, description: "Company or organization name" },
+            phone: { type: Type.STRING, description: "Mobile or office phone number" },
+            email: { type: Type.STRING, description: "Email address" },
+            address: { type: Type.STRING, description: "Physical office address" },
+            website: { type: Type.STRING, description: "Company website URL" },
+            notes: { type: Type.STRING, description: "Any other visible important text" }
           },
           required: ["name", "phone", "company"],
         },
@@ -54,9 +62,11 @@ export const extractCardData = async (base64Image: string): Promise<any> => {
     });
 
     if (response.text) {
-      return JSON.parse(response.text);
+      const parsedData = JSON.parse(response.text);
+      console.log("OCR Extracted Data:", parsedData);
+      return parsedData;
     } else {
-      throw new Error("No data extracted");
+      throw new Error("AI failed to return text content.");
     }
   } catch (error) {
     console.error("Gemini OCR Error:", error);
