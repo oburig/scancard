@@ -1,33 +1,65 @@
-import { GoogleGenerativeAI, SchemaType } from "@google/generative-ai";
 
-// 1. 환경 변수에서 API 키를 가져옵니다.
-const API_KEY = process.env.API_KEY || "";
+import { GoogleGenAI, Type } from "@google/genai";
 
-// 2. 인스턴스 생성
-const genAI = new GoogleGenerativeAI(API_KEY);
+export const extractCardData = async (base64Image: string): Promise<any> => {
+  const apiKey = process.env.API_KEY;
+  if (!apiKey) {
+    throw new Error("API Key is missing.");
+  }
 
-/**
- * [수정 포인트] 
- * App.tsx에서 'extractCardData'라는 이름으로 불러오고 있으므로 
- * 함수 이름을 동일하게 맞춰서 내보내야(export) 합니다.
- */
-export const extractCardData = async (prompt: string) => {
+  const ai = new GoogleGenAI({ apiKey });
+
+  const systemInstruction = `
+    You are an expert OCR assistant specialized in parsing business cards, especially Korean and International formats.
+    Extract the information accurately.
+    - If a field is missing, use an empty string.
+    - Format phone numbers cleanly (e.g., 010-1234-5678).
+    - If there are multiple phone numbers, prefer the mobile number.
+    - Ensure 'name' captures the full name.
+  `;
+
   try {
-    const model = genAI.getGenerativeModel({ 
-      model: "gemini-1.5-flash",
-      generationConfig: {
+    const response = await ai.models.generateContent({
+      model: "gemini-3-flash-preview",
+      contents: {
+        parts: [
+          {
+            inlineData: {
+              mimeType: "image/jpeg",
+              data: base64Image,
+            },
+          },
+          {
+            text: "Extract data from this business card.",
+          },
+        ],
+      },
+      config: {
+        systemInstruction: systemInstruction,
         responseMimeType: "application/json",
-      }
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            name: { type: Type.STRING },
+            jobTitle: { type: Type.STRING },
+            company: { type: Type.STRING },
+            phone: { type: Type.STRING },
+            email: { type: Type.STRING },
+            address: { type: Type.STRING },
+            website: { type: Type.STRING },
+          },
+          required: ["name", "phone", "company"],
+        },
+      },
     });
 
-    const result = await model.generateContent(prompt);
-    const response = await result.response;
-    const text = response.text();
-    
-    // JSON 문자열을 파싱하여 결과 반환
-    return JSON.parse(text);
+    if (response.text) {
+      return JSON.parse(response.text);
+    } else {
+      throw new Error("No data extracted");
+    }
   } catch (error) {
-    console.error("Gemini API Error:", error);
+    console.error("Gemini OCR Error:", error);
     throw error;
   }
 };
